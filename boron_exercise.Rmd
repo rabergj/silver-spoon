@@ -1,0 +1,134 @@
+---
+title: "Boron Exercise"
+author: "Silver Spoon"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output: 
+  html_document:
+    df: paged
+    toc: yes
+    toc_float: yes
+    toc_level: 2
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+# System
+
+This is the equilibrium between boric acid (abbreviated $B_3$) and the borate ion (abbreviated $B_4$).
+
+$$
+B(OH)_4^- + H^+ \Leftrightarrow B(OH)_3 + H_2O
+$$
+
+Mass fractions $f$ of the different pools:
+
+$$
+\begin{align}
+f_{3} &= \frac{[B(OH)_3]}{[B(OH)_3] + [B(OH)_4^-]} \\ 
+f_{4} &= 1 - f_{3}
+\end{align}
+$$
+
+#Contants
+
+```{r}
+alpha_b3_vs_b4 <- 1.0194
+delta_seawater <- 39 # permil
+pka <- 9.24 # For boric acid dissociation constant
+eps_b3_vs_b4 <- (alpha_b3_vs_b4 - 1) * 1000 # permil
+```
+
+
+
+# Boron Isotopes as Function of f
+
+```{r}
+boron <- data_frame(
+  f_3 = seq(0, 1, 0.1),
+  f_4 = 1 - f_3,
+  delta_b3 = (alpha_b3_vs_b4 * delta_seawater + f_4 * eps_b3_vs_b4) / 
+    (1 - f_3 + alpha_b3_vs_b4 * f_3),
+  delta_b3_approx = delta_seawater + f_4 * eps_b3_vs_b4,
+  delta_b4 = (delta_seawater - f_3 * eps_b3_vs_b4) / 
+    (1 - f_3 + alpha_b3_vs_b4 * f_3),
+  delta_b4_approx = delta_seawater - f_3 * eps_b3_vs_b4,
+  delta_total = f_3 * delta_b3 + f_4 * delta_b4,
+  delta_total_approx =  f_3 * delta_b3_approx + f_4 * delta_b4_approx
+)
+boron
+```
+
+```{r}
+boron %>% 
+  gather(key = delta, value = value, starts_with("delta")) %>% 
+  mutate(
+    # for linetypes:
+    exact = !str_detect(delta, "approx"), 
+    # chop of _approx (order matters here!):
+    delta = str_replace(delta, "_approx", "")
+  ) %>% 
+  ggplot() +
+  aes(f_3, value, color = delta, linetype = exact) +
+  # flip default line types, remove linetype legend:
+  scale_linetype_manual(values = c(2,1), guide = "none") + 
+  # look up "R color brewer" for defining more colors:
+  scale_color_brewer(palette = "Set1") +
+  geom_line()
+```
+
+
+# Boron Isotopes as Function of pH
+
+$$
+\begin{align}
+f_{3} &= \frac{[B(OH)_3]}{[B(OH)_3] + [B(OH)_4^-]} =
+\frac{1}{1 + \frac{[B(OH)_3]}{[B(OH)_3]}} \\
+K_a &= \frac{[B(OH)_4^-][H^+]}{[B(OH)_3]} \\
+pK_a &= - log_{10} \frac{[B(OH)_4^-][H^+]}{[B(OH)_3]} = - log_{10} K_a\\
+pH &= - log_{10} [H^+] \\
+\frac{[B(OH)_4^-]}{[B(OH)_3]} &= \frac{10^{-pK_a}}{10^{-pH}} \\
+f_3 &= \frac{1}{1 + 10^{(pH - pK_a)}}
+\end{align}
+$$
+
+
+```{r}
+boron_pH <- data_frame(
+  pH = seq(7, 12, 0.01),
+  f_3 = 1/(1 + 10^(pH - pka)),
+  f_4 = 1 - f_3,
+  delta_b3 = (alpha_b3_vs_b4 * delta_seawater + f_4 * eps_b3_vs_b4) / 
+    (1 - f_3 + alpha_b3_vs_b4 * f_3),
+  delta_b3_approx = delta_seawater + f_4 * eps_b3_vs_b4,
+  delta_b4 = (delta_seawater - f_3 * eps_b3_vs_b4) / 
+    (1 - f_3 + alpha_b3_vs_b4 * f_3),
+  delta_b4_approx = delta_seawater - f_3 * eps_b3_vs_b4,
+  delta_total = f_3 * delta_b3 + f_4 * delta_b4,
+  delta_total_approx =  f_3 * delta_b3_approx + f_4 * delta_b4_approx
+)
+boron_pH
+```
+
+```{r}
+boron_pH %>% 
+  gather(key = delta, value = value, starts_with("delta")) %>% 
+  mutate(
+    exact = !str_detect(delta, "approx"), 
+    delta = str_replace(delta, "_approx", "") %>% 
+      factor() %>% fct_inorder() %>% fct_recode(
+        "$\\delta_{B(OH)_3}$" = "delta_b3",
+        "$\\delta_{B(OH)_4^-}" = "delta_b4",
+        "$\\delta_{seawater}" = "delta_total"
+      )
+  ) %>% 
+  ggplot() +
+  aes(pH, value, color = delta, linetype = exact) +
+  scale_linetype_manual(values = c(2,1), guide = "none") + 
+  scale_color_brewer(palette = "Set1", labels = latex2exp::TeX) +
+  geom_line() + 
+  theme_bw() +
+  labs(y = latex2exp::TeX("$\\delta\\ , \\[\U2030\\]$"))
+```
+
